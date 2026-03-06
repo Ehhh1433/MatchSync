@@ -8,29 +8,21 @@ namespace MatchSync.Models
         {
         }
 
+        // The tables your API can "talk" to
         public DbSet<Inventory> Inventory { get; set; }
         public DbSet<User> Users { get; set; }
-
-        // ADD THIS LINE: This tells the code to connect to your Bookings table
         public DbSet<Booking> Bookings { get; set; }
 
+        // MERGED: This single method tells SQL which columns are the "Keys"
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<Inventory>().HasKey(i => i.ItemID);
-            modelBuilder.Entity<User>().HasKey(u => u.UserID);
-
-            // This ensures EF Core recognizes your Booking Primary Key
-            modelBuilder.Entity<Booking>().HasKey(b => b.BookingID);
-        }
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            // Ensures ItemID is the Primary Key for scanning
+            // Primary Key for Inventory (Retail, Rental, Service)
             modelBuilder.Entity<Inventory>().HasKey(i => i.ItemID);
 
-            // Ensures UserID is the Primary Key for Auth
+            // Primary Key for Users (Admin, Staff, Customer)
             modelBuilder.Entity<User>().HasKey(u => u.UserID);
 
-            // Ensures BookingID is the Primary Key for Reservations
+            // Primary Key for Reservations (Match Point bookings)
             modelBuilder.Entity<Booking>().HasKey(b => b.BookingID);
         }
     }

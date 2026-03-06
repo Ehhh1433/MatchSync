@@ -1,98 +1,51 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MatchSync.Models;
+using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-public class AuthController : ControllerBase
+namespace MatchSync.Controllers
 {
-    private readonly MatchSyncContext _context;
-
-    public AuthController(MatchSyncContext context)
+    [Route("api/[controller]")]
+    [ApiController]
+    public class AuthController : ControllerBase
     {
-        _context = context;
-    }
+        private readonly MatchSyncContext _context;
+        public AuthController(MatchSyncContext context) => _context = context;
 
-    [HttpPost("register")]
-    public async Task<IActionResult> Register(User newUser)
-    {
-        // 1. Basic Security: Check if phone already exists
-        if (_context.Users.Any(u => u.PhoneNumber == newUser.PhoneNumber))
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(User newUser)
         {
-            return BadRequest("This phone number is already registered.");
-        }
+            if (await _context.Users.AnyAsync(u => u.PhoneNumber == newUser.PhoneNumber))
+                return BadRequest("Phone number already registered.");
 
-        // 2. Add to Database
-        _context.Users.Add(newUser);
-        await _context.SaveChangesAsync();
-
-        // 3. Simulated OTP Logic
-        // In a real app, you'd call an SMS API here
-        return Ok(new { message = "Registration successful! Please verify your OTP." });
-    }
-    [HttpPost("login")]
-    public IActionResult Login([FromBody] LoginRequest request)
-    {
-        // 1. Find the user by phone number or email
-        var user = _context.Users.FirstOrDefault(u => u.PhoneNumber == request.Username || u.Email == request.Username);
-
-        if (user == null || user.PasswordHash != request.Password)
-        {
-            return Unauthorized("Invalid phone number/email or password.");
-        }
-
-        // 2. FIXED: Check if the account is verified via OTP
-        if (!user.IsVerified)
-        {
-            // Use StatusCode(403, ...) instead of Forbidden()
-            return StatusCode(403, "Please verify your account via OTP before logging in.");
-        }
-
-        // 3. Return user info and RoleID to the app
-        return Ok(new
-        {
-            Message = "Login successful!",
-            UserID = user.UserID,
-            FullName = user.FullName,
-            Role = user.RoleID // 0 = Admin, 1 = Staff, 2 = Customer
-        });
-    }
-    [HttpPost("verify-otp")]
-    public async Task<IActionResult> VerifyOtp(string phoneNumber, string otpCode)
-    {
-        var user = _context.Users.FirstOrDefault(u => u.PhoneNumber == phoneNumber);
-
-        if (user == null)
-        {
-            return NotFound("User not found.");
-        }
-
-        // Simulated OTP Check (Hardcoded as '1234' for testing)
-        if (otpCode == "1234")
-        {
-            user.IsVerified = true;
+            _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
-            return Ok(new { message = "Account verified successfully! You can now login." });
+            return Ok(new { message = "Registration successful! Use OTP 1234 to verify." });
         }
 
-        return BadRequest("Invalid OTP code.");
-    }
-    [HttpPut("update-role/{targetUserId}")]
-    public async Task<IActionResult> UpdateUserRole(int targetUserId, int newRoleId)
-    {
-        // Logic: Only an Admin (Role 0) should be able to call this!
-        var user = await _context.Users.FindAsync(targetUserId);
-        if (user == null) return NotFound();
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == request.Username || u.Email == request.Username);
+            if (user == null || user.PasswordHash != request.Password) return Unauthorized("Invalid credentials.");
+            if (!user.IsVerified) return StatusCode(403, "Please verify your account via OTP first.");
 
-        user.RoleID = newRoleId; // 0=Admin, 1=Staff, 2=Customer
-        await _context.SaveChangesAsync();
+            return Ok(new { UserID = user.UserID, FullName = user.FullName, Role = user.RoleID });
+        }
 
-        return Ok(new { message = "User role updated successfully." });
-    }
+        [HttpPost("verify-otp")]
+        public async Task<IActionResult> VerifyOtp(string phoneNumber, string otpCode)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
+            if (user == null) return NotFound("User not found.");
+            if (otpCode == "1234")
+            {
+                user.IsVerified = true;
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Account verified!" });
+            }
+            return BadRequest("Invalid OTP code.");
+        }
 
-    // FIXED: Added = string.Empty; to stop the CS8618 warnings
-    public class LoginRequest
-    {
-        public string Username { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
+        public class LoginRequest { public string Username { get; set; } = ""; public string Password { get; set; } = ""; }
     }
 }
