@@ -11,34 +11,71 @@ namespace MatchSync.Controllers
         private readonly MatchSyncContext _context;
         public ReportsController(MatchSyncContext context) => _context = context;
 
+        // Requirement: Analytics with Type and Date Range filtering (e.g., Mar 1 - Mar 7)
         [HttpGet("analytics")]
-        public async Task<IActionResult> GetAnalytics(int month, int year)
+        public async Task<IActionResult> GetAnalytics(
+            [FromQuery] DateTime? startDate,
+            [FromQuery] DateTime? endDate,
+            [FromQuery] string? type) // 'Badminton', 'Volleyball', 'Rental', 'Retail'
         {
-            var bookings = await _context.Bookings
-                .Where(b => b.BookingDate.Month == month && b.BookingDate.Year == year &&
-                       (b.BookingStatus == "Completed" || b.BookingStatus == "Confirmed"))
-                .ToListAsync();
+            var query = _context.Transactions.AsQueryable();
 
-            var stats = bookings.GroupBy(b => b.CourtID <= 5 ? "Badminton" : "Volleyball")
+            if (startDate.HasValue) query = query.Where(t => t.TransDate >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(t => t.TransDate <= endDate.Value);
+            if (!string.IsNullOrEmpty(type)) query = query.Where(t => t.TransType == type);
+
+            var data = await query.ToListAsync();
+
+            // Formatted for Visual Graphs (Grouped by Date)
+            var graphData = data.GroupBy(t => t.TransDate.Date)
                 .Select(g => new {
-                    Sport = g.Key,
-                    Revenue = g.Count() * (g.Key == "Badminton" ? 250 : 500)
-                });
+                    Date = g.Key.ToString("yyyy-MM-dd"),
+                    TotalSales = g.Sum(x => x.TotalAmount)
+                }).OrderBy(x => x.Date);
 
-            return Ok(new { Month = month, Year = year, Data = stats });
+            return Ok(new
+            {
+                Filters = new { startDate, endDate, type },
+                TotalRevenue = data.Sum(x => x.TotalAmount),
+                ChartData = graphData
+            });
         }
 
-        [HttpGet("user-proven-status/{userId}")]
-        public async Task<IActionResult> GetProvenStatus(int userId)
+        // Requirement: View All Staff & Users + Soft Delete
+        [HttpGet("accounts")]
+        public async Task<IActionResult> GetAccounts(int roleId) // 1 for Staff, 2 for User
         {
-            var sessions = await _context.Bookings
-                .Where(b => b.UserID == userId && b.BookingStatus == "Completed")
-                .ToListAsync();
+            var accounts = await _context.Users
+                .Where(u => u.RoleID == roleId && u.AccountStatus == "Active")
+                .Select(u => new {
+                    u.UserID,
+                    u.FullName,
+                    u.LoyaltyPoints,
+                    u.Username
+                }).ToListAsync();
+            return Ok(accounts);
+        }
 
-            int qualifying = sessions.Count(s => (s.EndTime - s.StartTime).TotalHours >= 2);
-            bool isProven = qualifying >= 5; // The 5-booking hurdle logic
+        [HttpDelete("accounts/{id}")]
+        public async Task<IActionResult> DeleteAccount(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound();
 
-            return Ok(new { TotalQualifying = qualifying, IsProven = isProven });
+            user.AccountStatus = "Deleted"; // Soft delete to keep historical logs
+            await _context.SaveChangesAsync();
+            return Ok(new { Message = "Account deactivated." });
+        }
+
+        // Requirement: User History (Reserved courts and redeemed items)
+        [HttpGet("user-history/{userId}")]
+        public async Task<IActionResult> GetUserHistory(int userId)
+        {
+            var bookings = await _context.Bookings.Where(b => b.UserID == userId).ToListAsync();
+            var redemptions = await _context.Transactions
+                .Where(t => t.UserID == userId && t.TransType == "Redeemed").ToListAsync();
+
+            return Ok(new { Bookings = bookings, Redemptions = redemptions });
         }
     }
 }

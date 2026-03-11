@@ -14,8 +14,12 @@ namespace MatchSync.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(User newUser)
         {
-            if (await _context.Users.AnyAsync(u => u.PhoneNumber == newUser.PhoneNumber))
-                return BadRequest("Phone number already registered.");
+            // Check by new Username field or Phone
+            if (await _context.Users.AnyAsync(u => u.Username == newUser.Username || u.PhoneNumber == newUser.PhoneNumber))
+                return BadRequest("Username or Phone number already exists.");
+
+            newUser.LoyaltyPoints = 0;
+            newUser.AccountStatus = "Active";
 
             _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
@@ -25,25 +29,29 @@ namespace MatchSync.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == request.Username || u.Email == request.Username);
-            if (user == null || user.PasswordHash != request.Password) return Unauthorized("Invalid credentials.");
-            if (!user.IsVerified) return StatusCode(403, "Please verify your account via OTP first.");
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
 
-            return Ok(new { UserID = user.UserID, FullName = user.FullName, Role = user.RoleID });
+            if (user == null || user.PasswordHash != request.Password)
+                return Unauthorized("Invalid credentials.");
+
+            if (user.AccountStatus == "Deleted")
+                return Unauthorized("Account no longer exists.");
+
+            return Ok(new { UserID = user.UserID, FullName = user.FullName, Role = user.RoleID, Points = user.LoyaltyPoints });
         }
-
-        [HttpPost("verify-otp")]
-        public async Task<IActionResult> VerifyOtp(string phoneNumber, string otpCode)
+        [HttpPost("create-staff")]
+        public async Task<IActionResult> CreateStaff([FromBody] User staffUser)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
-            if (user == null) return NotFound("User not found.");
-            if (otpCode == "1234")
-            {
-                user.IsVerified = true;
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "Account verified!" });
-            }
-            return BadRequest("Invalid OTP code.");
+            // Force role to Staff
+            staffUser.RoleID = 1;
+            staffUser.AccountStatus = "Active";
+
+            if (await _context.Users.AnyAsync(u => u.Username == staffUser.Username))
+                return BadRequest("Username already taken.");
+
+            _context.Users.Add(staffUser);
+            await _context.SaveChangesAsync();
+            return Ok(new { Message = "Staff account created successfully!" });
         }
 
         public class LoginRequest { public string Username { get; set; } = ""; public string Password { get; set; } = ""; }

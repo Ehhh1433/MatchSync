@@ -14,6 +14,7 @@ namespace MatchSync.Controllers
         [HttpGet("scan/{barcode}")]
         public async Task<IActionResult> GetByBarcode(string barcode)
         {
+            // Matches the new Barcode column in SQL
             var item = await _context.Inventory.FirstOrDefaultAsync(i => i.Barcode == barcode);
             return item == null ? NotFound("Item not found.") : Ok(item);
         }
@@ -24,12 +25,26 @@ namespace MatchSync.Controllers
             var item = await _context.Inventory.FindAsync(id);
             if (item == null) return NotFound();
 
-            if (item.Category == "Retail" && item.StockQuantity + quantityChange < 0)
+            // Updated to use 'StockQty' from new SQL
+            if (item.StockQty + quantityChange < 0)
                 return BadRequest("Insufficient stock.");
 
-            item.StockQuantity += quantityChange;
+            item.StockQty += quantityChange;
+            item.LastUpdated = DateTime.Now;
             await _context.SaveChangesAsync();
-            return Ok(new { Item = item.ItemName, NewQuantity = item.StockQuantity });
+            return Ok(new { Item = item.ItemName, NewQuantity = item.StockQty });
+        }
+
+        [HttpPut("change-price/{id}")]
+        public async Task<IActionResult> ChangePrice(int id, [FromBody] decimal newPrice)
+        {
+            var item = await _context.Inventory.FindAsync(id);
+            if (item == null) return NotFound();
+
+            item.Price = newPrice;
+            item.LastUpdated = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return Ok(new { Message = "Price updated", Item = item.ItemName, NewPrice = item.Price });
         }
     }
 }

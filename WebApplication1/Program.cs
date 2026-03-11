@@ -3,7 +3,7 @@ using MatchSync.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- ADD THIS SECTION FOR CORS ---
+// CORS Policy for Mobile App and Web Portals
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -14,7 +14,6 @@ builder.Services.AddCors(options =>
                   .AllowAnyHeader();
         });
 });
-// ---------------------------------
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -34,11 +33,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// --- ADD THIS LINE BEFORE AUTHORIZATION ---
 app.UseCors("AllowAll");
-// ------------------------------------------
-
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
